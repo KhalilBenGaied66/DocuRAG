@@ -1,0 +1,60 @@
+[project]
+name = "docurag"
+version = "0.1.0"
+description = "RAG over technical documentation: structure-aware ingestion, hybrid search in PostgreSQL/pgvector, reranking, cited answers, evaluation."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  "psycopg[binary,pool]>=3.2",
+  "pymupdf>=1.24",
+  "beautifulsoup4>=4.12",
+  "langchain-core>=1.0",
+  "langchain-openai>=1.0",
+  "langchain-text-splitters>=1.0",
+  "tiktoken>=0.7",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "sse-starlette>=2.1",
+  "python-multipart>=0.0.9",
+  "pyjwt[crypto]>=2.9",
+  "langgraph>=1.0",
+  "langgraph-checkpoint-postgres>=2.0",
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+rerank = ["sentence-transformers>=3.0"]
+ollama = ["langchain-ollama>=0.3"]
+azure = ["azure-identity>=1.17", "azure-ai-documentintelligence>=1.0"]
+eval = ["ragas>=0.2,<0.4"]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "httpx>=0.27", "ruff>=0.6"]
+
+[project.scripts]
+docurag = "docurag.cli:main"
+maintagent = "maintagent.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/docurag", "src/maintagent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = ["db: needs PostgreSQL with pgvector (set DOCURAG_TEST_DATABASE_URL)"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection idiom, not mutable defaults.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.File", "fastapi.Form"]

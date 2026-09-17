@@ -1,0 +1,6 @@
+ot_id;equipment_tag;date;status;fault_code;symptom;diagnosis;action
+OT-2025-0412;P-200-07;2025-10-14;clos;E-41;Alarme E-41 récurrente après redémarrage;Désalignement de 0,18 mm après remplacement du moteur;Réalignement laser, vibration mesurée à 2,3 mm/s
+OT-2025-0977;P-200-03;2025-12-02;clos;;Fuite à la garniture, 25 gouttes/min;Garniture usée (18 400 h de fonctionnement);Remplacement de la garniture GM-45
+OT-2026-0133;P-200-07;2026-03-20;clos;E-12;Échauffement du palier;Excès de graisse côté accouplement;Purge de la graisse puis regraissage à 12 g
+OT-2026-0561;P-200-11;2026-06-09;ouvert;;Bruit métallique au démarrage;;
+OT-2026-0702;P-200-07;2026-08-28;clos;E-41;Vibration mesurée à 6,8 mm/s;Début d'usure du roulement côté accouplement suspecté;Surveillance vibratoire mensuelle renforcée

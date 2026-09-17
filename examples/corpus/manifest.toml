@@ -1,0 +1,27 @@
+# Example corpus: small, but with the three source types and real access rules.
+# Replace it with real, messy documents for your portfolio (see README, "Build a real corpus").
+uri_prefix = "corpus://maintenance/"
+base_dir = "."
+
+[defaults]
+acl_groups = ["maintenance"]
+language = "fr"
+
+[[documents]]
+path = "manuals/pompe_p200_rev_c.md"
+doc_key = "manual-p200"
+version = "C"
+title = "Manuel de maintenance — Pompe centrifuge P-200"
+acl_groups = ["maintenance", "methodes"]
+metadata = { equipment = "P-200", effective_date = "2025-06-01" }
+
+[[documents]]
+path = "procedures/remplacement_garniture_p200.html"
+doc_key = "proc-garniture-p200"
+version = "2"
+
+[[documents]]
+path = "records/interventions_p200.csv"
+title = "Historique des interventions P-200"
+record_id_field = "ot_id"
+record_text_fields = ["equipement", "symptome", "diagnostic", "action"]
