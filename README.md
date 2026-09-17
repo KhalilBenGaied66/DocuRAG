@@ -67,7 +67,7 @@ Prerequisites: Python 3.11+ and PostgreSQL with **pgvector ≥ 0.7** (0.8+ recom
 setup below needs no local database and no paid API.
 
 ```bash
-python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scriptsctivate
+python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e ".[dev,ollama]"                    # extras: rerank (cross-encoder), azure (OCR + Entra ID), eval (RAGAS)
 cp .env.example .env                              # then fill it in (see below)
 docurag doctor                                    # checks config, database, models; says how to fix each problem
@@ -127,7 +127,7 @@ pgvector on Windows, from an "x64 Native Tools Command Prompt for VS 2022" run a
 (verified with pgvector 0.8.6 on PostgreSQL 17):
 
 ```bat
-set "PGROOT=C:\Program Files\PostgreSQL"
+set "PGROOT=C:\Program Files\PostgreSQL\17"
 cd %TEMP%
 git clone --branch v0.8.6 https://github.com/pgvector/pgvector.git
 cd pgvector
