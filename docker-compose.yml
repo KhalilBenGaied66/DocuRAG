@@ -1,0 +1,24 @@
+# PostgreSQL 17 with pgvector, for local development and the database tests.
+#   docker compose up -d --wait db
+#   DOCURAG_DATABASE_URL=postgresql://docurag:docurag@localhost:5433/docurag
+# Port 5433 on the loopback only, so it does not clash with a PostgreSQL already on 5432.
+# The password is for this local container only; set POSTGRES_PASSWORD to change it.
+services:
+  db:
+    image: pgvector/pgvector:0.8.6-pg17
+    environment:
+      POSTGRES_DB: docurag
+      POSTGRES_USER: docurag
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-docurag}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docurag -d docurag"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  pgdata:

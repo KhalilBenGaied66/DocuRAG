@@ -1,0 +1,59 @@
+name: ci
+
+# Every pushed branch is tested, so a branch is checked before it reaches main.
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: lint and offline tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev,ollama]"
+      - name: Lint
+        run: ruff check .
+      # Database tests skip here; they run in the next job.
+      - name: Tests
+        run: pytest
+
+  postgres:
+    name: database tests on PostgreSQL 17 + pgvector (docker compose)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DOCURAG_TEST_DATABASE_URL: postgresql://docurag:docurag@localhost:5433/docurag
+    steps:
+      - uses: actions/checkout@v7
+      # The same database a reader starts locally with `docker compose up -d db`.
+      - name: Start the database
+        run: docker compose up -d --wait db
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Database tests (ACL in every search mode, ingestion, versions, queue, end to end)
+        run: pytest -m db
+      - name: Database logs
+        if: failure()
+        run: docker compose logs db

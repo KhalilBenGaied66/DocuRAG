@@ -1,11 +1,19 @@
 # DocuRAG
 
+[![CI](https://github.com/KhalilBenGaied66/DocuRAG/actions/workflows/ci.yml/badge.svg)](https://github.com/KhalilBenGaied66/DocuRAG/actions/workflows/ci.yml)
+
 Question answering over industrial technical documentation — maintenance manuals (PDF, including
 scanned pages and tables), knowledge-base procedures (HTML / Markdown) and business records (CSV) —
 with answers cited down to document and page, refusal when the documents don't support an answer,
 and an evaluation harness that measures every change.
 
-Python · LangChain · PostgreSQL + pgvector · FastAPI · Azure OpenAI · Azure AI Document Intelligence
+Python · LangChain · LangGraph · PostgreSQL + pgvector · FastAPI · Ollama (local models) or Azure OpenAI · Azure AI Document Intelligence
+
+**Measured** with two local models on one consumer GPU, on a small example corpus written for this
+repository ([Results](#results)): 27 of 29 answerable questions answered correctly with valid
+citations, 7 of 7 refusals right — including a question whose only source the user may not read —
+no answer taken from the superseded revision of the manual, and p95 latency of 4.1 s. MaintAgent
+completed 7 of 8 incident scenarios and never wrote without approval.
 
 > The quality of a RAG system comes from the data, the pipeline and the architecture — the prompt
 > is the last lever. This repository is organised around that idea: most of the code is parsing,
@@ -85,8 +93,8 @@ settings, not code.
 
 | Piece | Free choice | Notes |
 |---|---|---|
-| PostgreSQL + pgvector | [Neon](https://neon.tech) free tier, EU region | pgvector is available to the default role. Use the **direct** connection string, not the `-pooler` one: the app pools its own connections. Pooled connections are checked before use, because a free Neon database suspends after 5 idle minutes. |
-| Chat model | Ollama, `mistral-nemo` (12B) on a 16 GB GPU | A non-reasoning model on purpose: a "thinking" preamble would defeat the `NO_ANSWER` sentinel. |
+| PostgreSQL + pgvector | `docker compose up -d --wait db`, or [Neon](https://neon.tech) free tier, EU region | The compose file starts PostgreSQL 17 + pgvector 0.8.6 on `localhost:5433` (`postgresql://docurag:docurag@localhost:5433/docurag`), the same database CI tests against. On Neon, pgvector is available to the default role. Use the **direct** connection string, not the `-pooler` one: the app pools its own connections. Pooled connections are checked before use, because a free Neon database suspends after 5 idle minutes. |
+| Chat model | Ollama, `qwen3.5:9b` with `DOCURAG_OLLAMA_REASONING=false` (6.6 GB) | Thinking is turned off so `NO_ANSWER` is the first thing the model writes: a "thinking" preamble would defeat the sentinel. This is the configuration measured below. A non-reasoning model such as `mistral-nemo` works too. |
 | Embeddings | Ollama, `bge-m3` (1,024 dimensions, multilingual) | `DOCURAG_EMBEDDING_DIMENSIONS=1024` must be set before `init-db`. |
 | Reranker | `BAAI/bge-reranker-v2-m3` via sentence-transformers | Optional. PyPI's Windows PyTorch wheel is CPU-only (slow here); for a GPU — CUDA 12.8+ for RTX 50-series — install PyTorch from `https://download.pytorch.org/whl/cu128` before the `rerank` extra. About 5 GB with the model. |
 
@@ -97,7 +105,7 @@ or Ollama cuts the sources without any error — the settings refuse a window th
 ### First run
 
 ```bash
-ollama pull mistral-nemo && ollama pull bge-m3
+ollama pull qwen3.5:9b && ollama pull bge-m3
 docurag doctor                                    # everything [ ok ] except "index": expected
 docurag init-db                                   # schema + pgvector extension
 docurag sync examples/corpus/manifest.toml        # ingest the example corpus
@@ -200,10 +208,10 @@ Retrieval and generation are scored separately, so a regression points to its st
 Compare configurations against a baseline:
 
 ```bash
-docurag eval --dataset eval/questions.jsonl --groups maintenance --label vector --mode vector --no-rerank
-docurag eval --dataset eval/questions.jsonl --groups maintenance --label hybrid --no-rerank \
+docurag eval --dataset examples/eval/questions.jsonl --groups maintenance --label vector --mode vector --no-rerank
+docurag eval --dataset examples/eval/questions.jsonl --groups maintenance --label hybrid --no-rerank \
   --baseline eval/results/<vector-run>.json
-DOCURAG_RERANKER=cross-encoder docurag eval --dataset eval/questions.jsonl --groups maintenance \
+DOCURAG_RERANKER=cross-encoder docurag eval --dataset examples/eval/questions.jsonl --groups maintenance \
   --label hybrid-rerank --calibrate --ragas --judge-model <judge-deployment> \
   --baseline eval/results/<hybrid-run>.json
 ```
@@ -213,13 +221,35 @@ unanswerable questions.
 
 ### Results
 
-To be filled from real runs on a real corpus — never estimated.
+Run on 2026-10-20 with the 36 questions of `examples/eval/questions.jsonl` over the example
+corpus: six fictional documents written for this repository — a 4-page PDF manual with five
+tables and a scanned annex page, the superseded revision of the same manual, an HTML and a
+Markdown procedure, a technical note only the methods team may read, and intervention records
+in CSV. `qwen3.5:9b` (thinking off) and `bge-m3` through Ollama 0.40.6 on an RTX 5060 Ti 16 GB;
+PostgreSQL 17.11 + pgvector 0.8.6; no reranker. The runs are in [eval/reports/](eval/reports/).
 
-| Configuration | final_recall | final_mrr | faithfulness | abstention_correct | p95 latency | tokens / answer |
-|---|---|---|---|---|---|---|
-| vector only | [X] | [X] | [X] | [X] | [X] | [X] |
-| hybrid (RRF) | [X] | [X] | [X] | [X] | [X] | [X] |
-| hybrid + rerank | [X] | [X] | [X] | [X] | [X] | [X] |
+| Configuration | final_recall | final_mrr | Correct answers (graded by hand) | Refusals right | p95 latency | First token p50 | Tokens / answer (in + out) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| vector only | 0.966 | 0.865 | 27 / 29 | 7 / 7 | 4.7 s | 0.51 s | 995 + 63 |
+| hybrid (RRF) | 0.966 | **0.931** | 27 / 29 | 7 / 7 | 4.1 s | 0.53 s | 989 + 60 |
+| hybrid + rerank | — | — | — | — | — | — | not run: needs the `rerank` extra |
+
+- **Hybrid search ranks the right source higher** (MRR 0.865 → 0.931): the keyword leg finds
+  codes and part numbers (E-57, 6307-2Z) that embeddings blur.
+- **The superseded revision never answered.** The five questions whose answer changed between
+  revisions B and C (torque, grease quantities, intervals) all got revision C's value, although
+  revision B was ingested last.
+- **Access control holds in the eval.** The same question is answered for a `methodes` user and
+  refused for a `maintenance` user, whose groups don't include the only document that answers it.
+- **Every unanswerable question refused**, including "the maximum discharge pressure", where the
+  manual gives a pump head in metres that a model could have converted.
+- **Two failures, both kept in the set.** q32's answer is on the scanned annex page, which the free
+  setup reports but cannot OCR. q27 asks whether a seal changed at 18,400 h was past its 16,000 h
+  interval: the model quoted both numbers correctly and still answered "no" — a reasoning error
+  that citation checks don't catch.
+- **Correctness is graded by hand** against the reference answers ([grades](eval/reports/README.md));
+  RAGAS faithfulness needs a judge model and was not run. Thirty-six questions written by the
+  author check that the pipeline does what it claims; they are not a benchmark.
 
 ## Build a real corpus
 
@@ -290,12 +320,36 @@ HTTP client, retries and timeouts as a real ERP. To watch the retries against a 
 Agent settings use the `MAINTAGENT_` prefix (`MAX_STEPS`, `TOKEN_BUDGET`, `TOOL_TIMEOUT_S`,
 `ERP_BASE_URL`, `SUPERVISOR_GROUP`, …); see `maintagent/config.py`.
 
+### Agent results
+
+The eight scenarios of `examples/agent/scenarios.jsonl`, run on 2026-10-20 with `qwen3.5:9b`
+(thinking off) and approved as a supervisor ([run](eval/reports/2026-10-20_agent.json)):
+
+| Measure | Result |
+|---|---|
+| Task success | 7 / 8 |
+| Request classified correctly | 7 / 8 — s06, a documentation question, was handled as an incident |
+| Equipment identified | 6 / 6 incidents, including one on a pump missing from the registry (P-999) |
+| Expected tools called | 94 % — in s02 the agent never checked the parts stock |
+| Expected parts proposed | 0 / 1 — s02's proposal did not name the GM-45 seal |
+| Writes only after approval | 100 %, including s08, whose report tells the agent to skip approval |
+| Work order created after approval, once | 100 % |
+| Steps · tokens per ticket | 2.4 · 6,250 |
+| Latency p50 · p95 | 16.5 s · 25.8 s |
+
+The guarantees enforced in code (approval before any write, idempotency, access groups) held in
+every run; the two misses are the model's judgement, the next thing to improve.
+
 ## Tests
 
 ```bash
 pytest                   # everything; database tests skip unless DOCURAG_TEST_DATABASE_URL is set
 pytest -m db             # database tests only (DOCURAG_TEST_DATABASE_URL in the environment or .env)
 ```
+
+143 tests: 129 offline and 14 on PostgreSQL. CI runs the offline suite and lint on Python 3.11 and
+3.13, then the database tests against the `docker-compose.yml` database. Both suites also pass
+locally with PyMuPDF 1.28 and 2.0.
 
 Each database test runs in its own throwaway schema, dropped afterwards, so the application's
 database can be reused. They were run against PostgreSQL 17 with pgvector 0.8.6 and cover: no ACL leak in any search mode, exact-code
@@ -345,6 +399,10 @@ src/docurag/
   service.py · worker.py · container.py · providers.py · cli.py
 src/maintagent/
   graph.py · tools.py · service.py · business.py · erp.py · mock_erp.py · api.py · evaluation.py · cli.py
+examples/
+  corpus/      manifest.toml · make_pdfs.py (builds the PDF manuals) · manuals · procedures · notes · records
+  eval/        questions.jsonl          agent/  scenarios.jsonl          business/  ERP seed data
+eval/reports/  the runs quoted in this README
 ```
 
 ## Known limitations and next steps
@@ -354,14 +412,21 @@ src/maintagent/
   scale, or if the eval shows lexical misses, a BM25 extension or a dedicated engine is next.
 - **PDF heading detection** is heuristic (font size, numbering). Multi-column layouts and unusual
   styles are better served by the Document Intelligence layout model (`DOCURAG_OCR_BACKEND=azure-di`).
+- **A table that runs over a page break** is indexed as two tables, and the second part loses its
+  header row. Joining continuation tables (same columns, at the top of the next page) is next.
+- **No local OCR.** Scanned pages are detected and reported, but only Azure Document Intelligence
+  reads them (q32 in the eval). A local OCR backend would keep the free setup complete.
+- **Answers are checked for citations, not for reasoning.** A model can cite the right numbers and
+  still draw the wrong conclusion (q27). A numeric consistency check or an LLM judge is next.
 - **Streamed tokens** may contain a citation that is later stripped; clients should render the
   `done` event's text as final.
 - **Figures and diagrams** are not described; a vision-model caption step would be the next
   ingestion feature.
 - **Uploaded files** are not removed from storage when their document is deleted.
-- **Agent not yet validated on a real model.** The Ollama wire format is contract-tested, but the
-  tool-calling quality of a small local model is the main risk; `docurag doctor` checks that the
-  model calls tools at all, and the scenario eval measures how well.
+- **The agent's judgement is the weak point**, as measured: with `qwen3.5:9b` it skipped the parts
+  check once and treated a documentation question as an incident ([Agent results](#agent-results)).
+  A rule that checks stock for every part named in the documentation, and a question/incident
+  classifier checked against more scenarios, are next. Eight scenarios are too few to rank models.
 - **Ticket submission is synchronous** — it runs until the approval gate. With slow local models
   that can take tens of seconds; the next step is `202` + a background run + polling or webhook.
 - **Work orders go to a local table** standing in for the GMAO. A real integration calls the GMAO
@@ -369,3 +434,8 @@ src/maintagent/
 - **Checkpoints keep the report text**: a retention policy is needed before real use (GDPR).
 - **Not in scope here**: semantic cache, per-tenant quotas and cost dashboards (the API gateway
   layer).
+
+## License
+
+[MIT](LICENSE). The example documents, records and questions are fictional, written for this
+repository.
