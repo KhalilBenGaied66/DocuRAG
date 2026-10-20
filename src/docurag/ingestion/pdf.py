@@ -16,9 +16,11 @@ import logging
 import re
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import pymupdf
 
+from docurag.ingestion.markup import rows_to_markdown
 from docurag.models import Element, ParsedDocument
 
 log = logging.getLogger(__name__)
@@ -60,13 +62,39 @@ def _body_font_size(page_dicts: list[dict]) -> float:
     return sizes.most_common(1)[0][0] if sizes else 10.0
 
 
+def _table_rows(page: pymupdf.Page, table: Any) -> list[list[str]]:
+    """Cell texts from the page's own words, each placed by its centre.
+
+    Not Table.extract(): PyMuPDF 2.0 glues a cell's words together and moves punctuation.
+    """
+    flags = pymupdf.TEXTFLAGS_WORDS & ~pymupdf.TEXT_PRESERVE_LIGATURES  # "fi", not "ﬁ"
+    words = page.get_text("words", clip=table.bbox, flags=flags)  # in reading order
+    rows: list[list[str]] = []
+    for row in table.rows:
+        cells: list[str] = []
+        for bbox in row.cells:
+            if not bbox:
+                cells.append("")  # covered by a merged cell
+                continue
+            x0, y0, x1, y1 = bbox
+            inside = [
+                w[4] for w in words
+                if x0 <= (w[0] + w[2]) / 2 <= x1 and y0 <= (w[1] + w[3]) / 2 <= y1
+            ]
+            cells.append(" ".join(inside).replace("|", "\\|"))
+        rows.append(cells)
+    return rows
+
+
 def _find_tables(page: pymupdf.Page) -> list[tuple[pymupdf.Rect, str]]:
     found: list[tuple[pymupdf.Rect, str]] = []
     try:
         for table in page.find_tables().tables:
             if table.row_count < 2 or table.col_count < 2:
                 continue  # single rows/columns are usually layout boxes, not tables
-            markdown = table.to_markdown().strip()
+            # Built from the table's own cells: PyMuPDF's to_markdown() may take the line
+            # above the table (often its section heading) for the header row.
+            markdown = rows_to_markdown(_table_rows(page, table))
             if markdown:
                 found.append((pymupdf.Rect(table.bbox), markdown))
     except Exception as exc:  # table detection is best effort; never lose the page for it

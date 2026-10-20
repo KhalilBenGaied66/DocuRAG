@@ -71,7 +71,11 @@ def test_ollama_provider_builds_local_clients(settings):
     })
     chat, embeddings = build_chat_model(local), build_embeddings(local)
     assert type(chat).__name__ == "ChatOllama" and chat.num_ctx == 8192
+    assert chat.reasoning is None  # the model's default unless asked
     assert type(embeddings).__name__ == "OllamaEmbeddings" and embeddings.model == "bge-m3"
+
+    no_thinking = build_chat_model(local.model_copy(update={"ollama_reasoning": False}))
+    assert no_thinking.reasoning is False
 
 
 def test_schema_renders_validated_values(settings):

@@ -97,6 +97,44 @@ def test_pdf_structure_tables_and_scanned_pages(tmp_path):
     assert not any("Rev. C" in e.text for e in parsed.elements)
 
 
+def test_heading_right_above_a_table_is_not_taken_for_its_header(tmp_path):
+    html = """<h3>3.1 Périodicités</h3>
+    <table><tr><th>Opération</th><th>Périodicité</th></tr>
+    <tr><td>Graissage des roulements</td><td>Toutes les 2 000 h</td></tr>
+    <tr><td>Mesure vibratoire</td><td>Mensuelle</td></tr></table>"""
+    css = """body { font-size: 10pt; } h3 { font-size: 11.5pt; margin: 8pt 0 3pt 0; }
+    table { border-collapse: collapse; margin: 4pt 0 8pt 0; }
+    th, td { border: 0.8pt solid black; padding: 2pt 6pt; } th { font-weight: bold; }"""
+    path = tmp_path / "table.pdf"
+    writer = pymupdf.DocumentWriter(str(path))
+    story = pymupdf.Story(html=html, user_css=css)
+    story.place(pymupdf.Rect(56, 76, 539, 766))
+    story.draw(writer.begin_page(pymupdf.paper_rect("a4")))
+    writer.end_page()
+    writer.close()
+
+    parsed = parse_pdf(path)
+
+    (table,) = [e.text for e in parsed.elements if e.kind == "table"]
+    assert table.splitlines()[0] == "| Opération | Périodicité |"
+    assert "Périodicités" not in table and "**" not in table
+    assert [e.text for e in parsed.elements if e.kind == "heading"] == ["3.1 Périodicités"]
+
+
+def test_example_manual_pdf_parses_as_documented():
+    path = Path(__file__).parents[1] / "examples/corpus/manuals/pompe_p200_rev_c.pdf"
+
+    parsed = normalize(parse_pdf(path))
+
+    tables = [e.text for e in parsed.elements if e.kind == "table"]
+    assert len(tables) == 5
+    assert any("| Carter de pompe | M10 | 49 |" in t for t in tables)
+    assert all(t.splitlines()[0].count("|") >= 3 and "Col" not in t for t in tables)
+    assert parsed.warnings == ["pages without a text layer (scanned?): 4"]
+    assert parsed.stats["furniture_removed"] == 6
+    assert ("4 Couples de serrage", 1) in [(e.text, e.level) for e in parsed.elements]
+
+
 # ------------------------------------------------------------------ Markdown / HTML
 
 DI_MARKDOWN = """<!-- PageHeader="Manuel P-200" -->

@@ -34,6 +34,11 @@ def html_table_to_markdown(table: Tag | None) -> str:
             cells.extend([text] * max(1, min(span, 20)))
         if cells:
             rows.append(cells)
+    return rows_to_markdown(rows)
+
+
+def rows_to_markdown(rows: list[list[str]]) -> str:
+    """A Markdown table whose first row is the header; short rows are padded."""
     if not rows:
         return ""
     width = max(len(r) for r in rows)

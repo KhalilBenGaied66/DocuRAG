@@ -117,6 +117,19 @@ def check_consistency(settings: Settings) -> list[Check]:
 # ------------------------------------------------------------------ database
 
 
+async def _table_exists(conn: psycopg.AsyncConnection, settings: Settings, table: str) -> bool:
+    """Look in the configured schema only: through the search path ("<schema>, public"), an
+    index in public would be taken for this schema's, before init-db has created it."""
+    row = await (
+        await conn.execute(
+            "SELECT to_regclass(format('%%I.%%I', coalesce(%s::text, current_schema()), %s::text))"
+            " IS NOT NULL",
+            (settings.db_schema, table),
+        )
+    ).fetchone()
+    return bool(row and row[0])
+
+
 async def check_database(settings: Settings) -> list[Check]:
     checks: list[Check] = []
     host = urlsplit(settings.database_url).hostname or ""
@@ -214,10 +227,7 @@ async def check_database(settings: Settings) -> list[Check]:
                 )
                 return checks
 
-        has_schema = (await (await conn.execute("SELECT to_regclass('schema_info') IS NOT NULL")).fetchone())[
-            0
-        ]
-        if not has_schema:
+        if not await _table_exists(conn, settings, "schema_info"):
             checks.append(Check("index", "warn", "schema not created yet", "run: docurag init-db"))
             return checks
         stored = dict(await (await conn.execute("SELECT key, value FROM schema_info")).fetchall())
@@ -252,7 +262,7 @@ async def check_database(settings: Settings) -> list[Check]:
         else:
             checks.append(Check("index", "ok", f"{docs} documents, {chunks} chunks"))
 
-        if (await (await conn.execute("SELECT to_regclass('equipment') IS NOT NULL")).fetchone())[0]:
+        if await _table_exists(conn, settings, "equipment"):
             n = (await (await conn.execute("SELECT count(*) FROM equipment")).fetchone())[0]
             if n == 0:
                 checks.append(

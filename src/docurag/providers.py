@@ -175,6 +175,7 @@ def build_chat_model(settings: Settings, *, fast: bool = False) -> BaseChatModel
             model=name,
             base_url=settings.ollama_base_url,
             num_ctx=settings.ollama_num_ctx,
+            reasoning=settings.ollama_reasoning,
             temperature=settings.chat_temperature,
             client_kwargs={"timeout": settings.llm_timeout_s},
         )

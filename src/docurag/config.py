@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # Local models (provider=ollama): free, private, no rate limits
     ollama_base_url: str = "http://localhost:11434"
     ollama_num_ctx: int = 8192  # Ollama's default window is small: sources would be cut silently
+    # Thinking models (Qwen 3.5): false turns thinking off, so NO_ANSWER is the first thing
+    # written and the answer streams at once. Unset: the model's own default.
+    ollama_reasoning: bool | None = None
 
     # Retrieval
     text_search_config: str = "french"
